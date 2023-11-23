@@ -3,7 +3,7 @@
 permet de faire simplement de la base de donnée SQL
 
 exemple :
-```pyton
+```python
 from ORM import ORM, ID, DateTimeNow
 
 orm = ORM(name="test", path="./ORM")  # création de l'ORM et connection a la Base de Données
