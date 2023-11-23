@@ -22,7 +22,19 @@ import datetime
             -> permet de mettre à jour une ligne de la table
 """
 
+class DateTimeNow:
+    @staticmethod
+    def get():
+        return datetime.datetime.now()
 
+    @staticmethod
+    def get_str():
+        return f"{datetime.datetime.now().day}-{datetime.datetime.now().month}-{datetime.datetime.now().year} " \
+               f"{datetime.datetime.now().hour}:{datetime.datetime.now().minute}:{datetime.datetime.now().second}"
+
+
+class ID:
+    pass
 
 class DB:
     def __init__(self, path, name):
@@ -96,19 +108,6 @@ class DB:
 ________________________________________________________________________________________________________________________
 """
 
-class DateTimeNow:
-    def set(self):
-        return datetime.datetime.now()
-
-    def get(self, *args):
-        return f"{datetime.datetime.now().day}-{datetime.datetime.now().month}-{datetime.datetime.now().year} " \
-               f"{datetime.datetime.now().hour}:{datetime.datetime.now().minute}:{datetime.datetime.now().second}"
-
-
-class ID:
-    pass
-
-
 class ORM:
     def __init__(self, name:str, path="."):
         self._models = {}
@@ -179,8 +178,16 @@ class ORM:
                 finally:
                     self._collums_names.insert(0, "id")
 
-            def table(self):
+            def _table_getter(self):
                 return self._table
+
+            def _table_deleter(self):
+                raise Exception("la table n'est pas supprimable !!")
+
+            table = property(fget=_table_getter, fdel=_table_deleter)
+
+            def attr(self):
+                return {k:v for k, v in zip(self._collums_names, [getattr(self, i)for i in self._collums_names])}
 
             def create(self, **kwargs):
                 collums_names = self._collums_names.copy()
@@ -188,7 +195,7 @@ class ORM:
                     collums_names.remove("id")
 
                 if len(kwargs.keys()) != len(collums_names):
-                    raise ValueError(f"Suffisamment de valeurs (\n"
+                    raise ValueError(f"pas suffisamment de valeurs (\n"
                                      f"\t{' / '.join([i for i in kwargs.keys()])},\n"
                                      f"\t{' / '.join(collums_names)}"
                                      f")")
@@ -201,8 +208,9 @@ class ORM:
 
             def get(self, id_value):
                 try:
-                    return MODEL(**{k: v for k, v in zip(self._collums_names, self._db.get_one_by_id(self._table, id_value))})
+                    return self._db.get_value_by_id(self._table, id_value)
                 except:
+                    traceback.print_exc()
                     return None
 
             def delete(self):
