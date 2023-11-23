@@ -1,6 +1,6 @@
 # ORM
 
 exemple :
-``pyton
+```pyton
 test = "maurice"
-``
+```
