@@ -90,6 +90,9 @@ class DB:
 
         last_row_id = self.c.lastrowid
 
+        if self.get_one_by_id(table_name, last_row_id) is None:
+            last_row_id = kwargs["id"]
+
         return self.get_one_by_id(table_name, last_row_id)
 
     def delete_data(self, table_name, id):
