@@ -74,7 +74,7 @@ ________________________________________________________________________________
 valid_attr = [
     int, float,
     str,
-    list, dict
+    list, dict, tuple
 ]
 
 class Object:
@@ -92,9 +92,12 @@ class Object:
                 raise ValueError(
                     f"{k} n'existe pas dans [{'-'.join([i for i in vars(schema) if i.startswith('_') is False and i.startswith('__') is False])}]")
             elif getattr(schema, k) != type(v):
-                raise ValueError(
-                    f'{k}:{v} : type {type(v)} != {getattr(schema, k)}'
-                )
+                try:
+                    v = json.loads(v)
+                except:
+                    raise ValueError(
+                        f'{k}:{v} : type {type(v)} != {getattr(schema, k)}'
+                    )
 
             object.__setattr__(self, k, v)
 
@@ -115,6 +118,14 @@ class Object:
 
     def delete(self):
         object.__getattribute__(self, "__orm").db.delete_data(object.__getattribute__(self, "__table"), self.id)
+
+    def save(self):
+        object.__getattribute__(self, "__orm").db.update_data(object.__getattribute__(self, "__table"),
+                                                              self.id,
+                                                              **{k:v for k, v in zip(
+                                                                  object.__getattribute__(self, "attr"),
+                                                                  [object.__getattribute__(self, i) for i in object.__getattribute__(self, "attr")]
+                                                              )})
 
     def __setattr__(self, key, value):
         if key in self.attr:
