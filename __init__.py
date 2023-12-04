@@ -1,40 +1,6 @@
 import json
-import traceback
 import sqlite3
-import datetime
-
-"""
-        class MODEL:
-        -> Représente une donnée précise dans la table vous pouvez modifié l'objet et après le sauvegardé. Get un autre object qui appartient a la même table etc...
-            def table(self):
-            -> permet d'otbtenir la table de la base de données'
-
-            create(self, **kwargs):
-            -> permet de créer une nouvelle ligne dans la table
-
-            get(self, id):
-            -> permet de récupérer une ligne de la table
-
-            delete(self):
-            -> permet de supprimer une ligne de la table
-
-            update(self):
-            -> permet de mettre à jour une ligne de la table
-"""
-
-class DateTimeNow:
-    @staticmethod
-    def get():
-        return datetime.datetime.now()
-
-    @staticmethod
-    def get_str():
-        return f"{datetime.datetime.now().day}-{datetime.datetime.now().month}-{datetime.datetime.now().year} " \
-               f"{datetime.datetime.now().hour}:{datetime.datetime.now().minute}:{datetime.datetime.now().second}"
-
-
-class ID:
-    pass
+import types
 
 class DB:
     def __init__(self, path, name):
@@ -42,200 +8,162 @@ class DB:
         self.c = self.db.cursor()
 
     def convert_type(self, typ):
-        if typ == int or typ == bool or typ == ID:
-            return "INTEGER"
-        elif typ == float:
-            return "FLOAT"
-        elif typ == str or typ == list or typ == dict or typ == tuple:
-            return "TEXT"
-        else:
-            return "TEXT"
+        type_mapping = {
+            int: "INTEGER",
+            bool: "INTEGER",
+            float: "REAL",
+            str: "TEXT",
+            list: "TEXT",
+            dict: "TEXT",
+        }
+        if type_mapping.get(type(typ), "TEXT") is None:
+            raise ValueError(f'{typ} not in [{" - ".join(type_mapping.keys())}]')
+        return type_mapping.get(typ, "TEXT")
 
-    def create_table(self, _name, **kwargs):
+    def create_table(self, table_name, auto_increment=True, **columns):
+        id_column = "id INTEGER PRIMARY KEY AUTOINCREMENT" if auto_increment else "id INTEGER"
+        column_definitions = ', '.join(f'{name} {self.convert_type(typ)}' for name, typ in columns.items())
         self.c.execute(
-            f"CREATE TABLE IF NOT EXISTS {_name} ("
-            f"  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            f"  {','.join([f'{k} {self.convert_type(v)}' for k, v in kwargs.items()])}"
-            f")"
-        )
-
-    def create_table_without_id(self, _name, **kwargs):
-        self.c.execute(
-            f"CREATE TABLE IF NOT EXISTS {_name} ("
-            f"  {','.join([f'{k} {self.convert_type(v)}' for k, v in kwargs.items()])}"
-            f")"
+            f"CREATE TABLE IF NOT EXISTS {table_name} ({id_column}, {column_definitions})"
         )
 
     def get_all_by_table(self, table):
         self.c.execute(f"SELECT * FROM {table}")
         return self.c.fetchall()
 
+    def get_all_by_column(self, table, column, value):
+        self.c.execute(f"SELECT * FROM {table} WHERE {column} = ?", (value,))
+        return self.c.fetchall()
+
     def get_one_by_id(self, table, value):
         self.c.execute(f"SELECT * FROM {table} WHERE id = ?", (value,))
         return self.c.fetchone()
 
-    def create_data(self, table_name, **kwargs):
-        serialized_data = {k: json.dumps(v) if isinstance(v, (list, dict)) else v for k, v in kwargs.items()}
-
+    def create_data(self, table_name, **data):
+        serialized_data = {k: json.dumps(v) if isinstance(v, (list, dict)) else v for k, v in data.items()}
         columns = ', '.join(serialized_data.keys())
         values = ', '.join(['?' for _ in serialized_data.values()])
 
         self.c.execute(
-            f"INSERT INTO {table_name} "
-            f"({columns}) "
-            f"VALUES ({values})",
+            f"INSERT INTO {table_name} ({columns}) VALUES ({values})",
             tuple(serialized_data.values())
         )
         self.db.commit()
 
-        last_row_id = self.c.lastrowid
+        dt = self.get_one_by_id(table_name, self.c.lastrowid)
+        if dt is None:
+            dt = self.get_one_by_id(table_name, data.get("id"))
+        return dt
 
-        if self.get_one_by_id(table_name, last_row_id) is None:
-            last_row_id = kwargs["id"]
-
-        return self.get_one_by_id(table_name, last_row_id)
-
-    def delete_data(self, table_name, id):
-        self.c.execute(f"DELETE FROM {table_name} WHERE id = ?", (id,))
+    def delete_data(self, table_name, record_id):
+        self.c.execute(f"DELETE FROM {table_name} WHERE id = ?", (record_id,))
         self.db.commit()
 
-    def update_data(self, table_name, id_value, **kwargs):
-        serialized_data = {k: json.dumps(v) if isinstance(v, (list, dict)) else v for k, v in kwargs.items()}
-        set_values = ', '.join([f"{key} = ?" for key in serialized_data.keys()])
+    def update_data(self, table_name, record_id, **data):
+        serialized_data = {k: json.dumps(v) if isinstance(v, (list, dict)) else v for k, v in data.items()}
+        set_values = ', '.join(f"{key} = ?" for key in serialized_data.keys())
         values = tuple(serialized_data.values())
 
-        self.c.execute(f"UPDATE {table_name} SET {set_values} WHERE id = ?", (*values, id_value))
+        self.c.execute(f"UPDATE {table_name} SET {set_values} WHERE id = ?", (*values, record_id))
         self.db.commit()
 
 """
 ________________________________________________________________________________________________________________________
 """
 
+valid_attr = [
+    int, float,
+    str,
+    list, dict
+]
+
+class Object:
+    def __init__(self, schema, orm, **kwargs):
+        object.__setattr__(self, 'attr', [i for i in vars(schema) if i.startswith('_')
+                                          is False and i.startswith('__')
+                                          is False and getattr(schema, i) in valid_attr])
+
+        object.__setattr__(self, "__orm", orm)
+        object.__setattr__(self, '__table', schema.__name__)
+        object.__setattr__(self, '__schema', schema)
+
+        for k, v in kwargs.items():
+            if vars(schema).get(k) is None:
+                raise ValueError(
+                    f"{k} n'existe pas dans [{'-'.join([i for i in vars(schema) if i.startswith('_') is False and i.startswith('__') is False])}]")
+            elif getattr(schema, k) != type(v):
+                raise ValueError(
+                    f'{k}:{v} : type {type(v)} != {getattr(schema, k)}'
+                )
+
+            object.__setattr__(self, k, v)
+
+
+        for func in dir(schema):
+            if func.startswith("__") is False or func.startswith('_') is False:
+                if callable(getattr(schema, func)) and func not in vars(self):
+                    setattr(self, func, types.MethodType(getattr(schema, func), self))
+
+    def get(self, id):
+        return object.__getattribute__(self, "__orm").get_by_id(object.__getattribute__(self, "__table"), id)
+
+    def create(self, **kwargs):
+        return object.__getattribute__(self, "__orm").create_data(object.__getattribute__(self, "__table"), **kwargs)
+
+    def get_all(self, **kwargs):
+        return object.__getattribute__(self, "__orm").get_all_by_table(object.__getattribute__(self, "__table"))
+
+    def delete(self):
+        object.__getattribute__(self, "__orm").db.delete_data(object.__getattribute__(self, "__table"), self.id)
+
+    def __setattr__(self, key, value):
+        if key in self.attr:
+            if type(value) != object.__getattribute__(self.__getattribute__('__schema'), key):
+                raise ValueError(f'{value} : type '
+                                 f'{type(value)} != {object.__getattribute__(self.__getattribute__("__schema"), key)}')
+            object.__getattribute__(self, "__orm").db.update_data(object.__getattribute__(self, "__table"), self.id, **{key:value})
+        object.__setattr__(self, key, value)
+
 class ORM:
-    def __init__(self, name:str, path="."):
-        self._models = {}
-        self.tables = []
+    def __init__(self, path, name):
         self.db = DB(path, name)
+        self.tables = []
+        self._objs = {}
 
-    def get_table(self, table_name:str):
-        if table_name in self.tables:
-            return self._models[table_name]()
-        else:
-            raise Exception(f"La table {table_name} n'existe pas")
-
-    def get_all_by_table(self, table_name):
-        return self.db.get_all_by_table(table_name)
-
-    def get_value_by_id(self, table_name, id_value):
-        return self._models[table_name](**{k: v for k, v in zip(self._models[table_name]()._collums_names,
-                                                                 self.db.get_one_by_id(table_name, id_value))})
-
-    def get_table_obj(self, table_name):
-        return self._models.get(table_name)()
-
-    def Model(self, obj):
-        auto_id = False
-        master_orm = self
-        attributes = vars(obj)
-        temp = {}
-        collums_names = []
-
-        for attr_name, attr_value in attributes.items():
-            try:
-                if attr_name.startswith("__"):
-                    continue
-                if attr_value not in [int, float, str, bool, dict, list, tuple, DateTimeNow, ID]:
-                    raise ValueError("Votre modèle ne peut comprendre que des valeurs de type : [int, float, str, "
-                                     "bool, dict, list, tuple, DateTimeNow, ID]")
-                if attr_value == ID:
-                    auto_id = True
-                temp[attr_name] = attr_value
-                collums_names.append(attr_name)
-            except:
-                traceback.print_exc()
-
-        if auto_id is False:
-            self.db.create_table(obj.__name__, **temp)
-        else:
-            self.db.create_table_without_id(obj.__name__, **temp)
-
-        class MODEL:
-            def __init__(self, *args, **kwargs):
-                self._db = master_orm
-                self._collums_names = collums_names.copy()
-                self._table = obj.__name__
-                self._auto_id = auto_id
-                self._getted = False
-
-                for attr_name, attr_value in kwargs.items():
-                    self._getted = True
-                    try:
-                        setattr(self, attr_name, json.loads(attr_value))
-                    except:
-                        setattr(self, attr_name, attr_value)
-
-                try:
-                    self._collums_names.remove("id")
-                except:
-                    pass
-                finally:
-                    self._collums_names.insert(0, "id")
-
-            def _table_getter(self):
-                return self._table
-
-            def _table_deleter(self):
-                raise Exception("la table n'est pas supprimable !!")
-
-            table = property(fget=_table_getter, fdel=_table_deleter)
-
-            def attr(self):
-                return {k:v for k, v in zip(self._collums_names, [getattr(self, i)for i in self._collums_names])}
-
-            def create(self, **kwargs):
-                collums_names = self._collums_names.copy()
-                if not self._auto_id:
-                    collums_names.remove("id")
-
-                if len(kwargs.keys()) != len(collums_names):
-                    raise ValueError(f"pas suffisamment de valeurs (\n"
-                                     f"\t{' / '.join([i for i in kwargs.keys()])},\n"
-                                     f"\t{' / '.join(collums_names)}"
-                                     f")")
-
-                for k in kwargs.keys():
-                    if k not in collums_names:
-                        raise ValueError(f"{k} not in {self._collums_names}")
-
-                return MODEL(**{k: v for k, v in zip(self._collums_names, self._db.db.create_data(table_name=self._table, **kwargs))})
-
-            def get(self, id_value):
-                try:
-                    return self._db.get_value_by_id(self._table, id_value)
-                except:
-                    traceback.print_exc()
-                    return None
-
-            def delete(self):
-                if self._getted:
-                    self._db.db.delete_data(self._table, self.id)
-                else:
-                    raise ValueError("Object not getted")
-
-            def update(self):
-                if self._getted:
-                    temp = {}
-                    attr = vars(self)
-                    for k, v in attr.items():
-                        if k.startswith('_') or k.startswith('__'):
-                            continue
-                        else:
-                            temp.update({k:v})
-                    temp.pop("id", None)
-                    self._db.db.update_data(self._table, self.id, **temp)
-                else:
-                    raise ValueError("Object not getted")
-
-        self._models.update({obj.__name__: MODEL})
+    def schema(self, obj):
         self.tables.append(obj.__name__)
-        return MODEL
+        attr = {k: v for k, v in vars(obj).items() if k.startswith("_") is False and v in valid_attr}
+        if attr.get("id") is None:
+            self.db.create_table(obj.__name__, auto_increment=True, **attr)
+            attr = {"id":int, **attr}
+            setattr(obj, "id", int)
+        else:
+            copy = attr.copy()
+            copy.pop("id")
+            self.db.create_table(obj.__name__, auto_increment=False, **copy)
+
+        self._objs = {
+            obj.__name__: [
+                obj, attr
+            ]
+        }
+
+        return Object
+
+    def _mapper(self, table, data) -> Object:
+        return Object(
+            self._objs.get(table)[0], self, **{
+                k: v for k, v in zip(self._objs.get(table)[1], data)
+            }
+        )
+
+    def create_data(self, table, **kwargs):
+        data = self.db.create_data(table, **kwargs)
+        return self._mapper(table, data)
+
+    def get_by_id(self, table, id):
+        data = self.db.get_one_by_id(table, id)
+        return self._mapper(table, data)
+
+    def get_all_by_table(self, table):
+        return [self._mapper(table, data) for data in self.db.get_all_by_table(table)]
