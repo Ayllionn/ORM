@@ -83,7 +83,7 @@ class Object:
                                           is False and i.startswith('__')
                                           is False and getattr(schema, i) in valid_attr])
 
-        object.__setattr__(self, "__orm", orm)
+        object.__setattr__(self, '__orm', orm)
         object.__setattr__(self, '__table', schema.__name__)
         object.__setattr__(self, '__schema', schema)
 
@@ -107,8 +107,14 @@ class Object:
                 if callable(getattr(schema, func)) and func not in vars(self):
                     setattr(self, func, types.MethodType(getattr(schema, func), self))
 
+    def get_table(self):
+        return object.__getattribute__(self, '__table')
+
     def get(self, id):
         return object.__getattribute__(self, "__orm").get_by_id(object.__getattribute__(self, "__table"), id)
+
+    def get_collumn(self, collumn, value):
+        return self.__orm.get_by_collum(self.get_table(), collumn, value)
 
     def create(self, **kwargs):
         return object.__getattribute__(self, "__orm").create_data(object.__getattribute__(self, "__table"), **kwargs)
@@ -135,6 +141,12 @@ class Object:
             object.__getattribute__(self, "__orm").db.update_data(object.__getattribute__(self, "__table"), self.id, **{key:value})
         object.__setattr__(self, key, value)
 
+    def __str__(self):
+        return str({k:v for k,v in vars(self).items() if k.startswith('__') is False and k.startswith('_') is False and callable(v) is False})
+
+    def __int__(self):
+        return self.id
+
 class ORM:
     def __init__(self, path, name):
         self.db = DB(path, name)
@@ -153,11 +165,11 @@ class ORM:
             copy.pop("id")
             self.db.create_table(obj.__name__, auto_increment=False, **copy)
 
-        self._objs = {
+        self._objs.update({
             obj.__name__: [
                 obj, attr
             ]
-        }
+        })
 
         return Object
 
@@ -178,3 +190,6 @@ class ORM:
 
     def get_all_by_table(self, table):
         return [self._mapper(table, data) for data in self.db.get_all_by_table(table)]
+
+    def get_by_collum(self, table, collumn, value):
+        return [self._mapper(table, data) for data in self.db.get_all_by_column(table=table, column=collumn, value=value)]
