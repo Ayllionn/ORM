@@ -147,6 +147,23 @@ class Object:
     def __int__(self):
         return self.id
 
+class Table:
+    def __init__(self, orm, table):
+        self.orm = orm
+        self.table = table
+
+    def get(self, id) -> Object:
+        return self.orm.get_by_id(self.table, id)
+
+    def get_collumn(self, collumn, value) -> Object:
+        return self.orm.get_by_collum(self.table, collumn, value)
+
+    def get_all(self) -> list[Object]:
+        return self.orm.get_all_by_table(self.table)
+
+    def create(self, **kwargs) -> object:
+        return self.orm.create_data(self.table, **kwargs)
+
 class ORM:
     def __init__(self, path, name):
         self.db = DB(path, name)
@@ -180,16 +197,22 @@ class ORM:
             }
         )
 
-    def create_data(self, table, **kwargs):
+    def get_table(self, table) -> Table:
+        if table not in self.tables:
+            raise KeyError(table)
+
+        return Table(self, table)
+
+    def create_data(self, table, **kwargs) -> Object:
         data = self.db.create_data(table, **kwargs)
         return self._mapper(table, data)
 
-    def get_by_id(self, table, id):
+    def get_by_id(self, table, id) -> Object:
         data = self.db.get_one_by_id(table, id)
         return self._mapper(table, data)
 
-    def get_all_by_table(self, table):
+    def get_all_by_table(self, table) -> list[Object]:
         return [self._mapper(table, data) for data in self.db.get_all_by_table(table)]
 
-    def get_by_collum(self, table, collumn, value):
+    def get_by_collum(self, table, collumn, value) -> list[Object]:
         return [self._mapper(table, data) for data in self.db.get_all_by_column(table=table, column=collumn, value=value)]
