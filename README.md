@@ -24,9 +24,6 @@ class Message:
     def __str__(self):
         return self.content
 
-    def __int__(self):
-        return self.id
-
 # Schéma pour les utilisateurs
 @data.schema
 class User:
@@ -55,9 +52,6 @@ class User:
 
     def __str__(self):
         return self.name
-
-    def __int__(self):
-        return self.id
 
 # Récupération de la table des utilisateurs
 users = data.get_table('User')
