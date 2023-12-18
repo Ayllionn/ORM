@@ -2,7 +2,7 @@
 
 permet de faire simplement de la base de donnée SQL
 
-exemple : (ceci est un text en console pour voir rapidement se que l'on peut faire après libre cours a l'imagination)
+exemple : (ceci est un test en console pour voir rapidement se que l'on peut faire après libre cours a l'imagination)
 ```python
 import datetime
 
