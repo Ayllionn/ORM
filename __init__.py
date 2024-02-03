@@ -188,7 +188,7 @@ class ORM:
             ]
         })
 
-        return Object
+        return self.get_table(obj.__name__)
 
     def _mapper(self, table, data) -> Object:
         return Object(
