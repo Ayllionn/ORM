@@ -161,7 +161,7 @@ class Table:
     def get_all(self) -> list[Object]:
         return self.orm.get_all_by_table(self.table)
 
-    def create(self, **kwargs) -> object:
+    def create(self, **kwargs) -> Object:
         return self.orm.create_data(self.table, **kwargs)
 
 class ORM:
